@@ -1,0 +1,55 @@
+# ════════════════════════════════════════════════════════════════
+# NET-FIRE-MONITOR  –  .gitignore
+# ════════════════════════════════════════════════════════════════
+
+# ── Konfiguration (enthält persönliche Daten & E-Mail-Einstellungen) ──
+net_fire_monitor_config.json
+net_monitor_config.json
+
+# ── Logs (können sehr groß werden) ────────────────────────────────────
+*.log
+*.log.*
+
+# ── Reports & Cache ───────────────────────────────────────────────────
+reports/
+threat_intel_cache.txt
+
+# ── GeoIP-Datenbank (zu groß für GitHub, muss manuell heruntergeladen werden) ──
+GeoLite2-City.mmdb
+
+# ── Setup-Marker ──────────────────────────────────────────────────────
+.nm_setup_done
+
+# ── Python ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ── Virtuelle Umgebungen ──────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── IDE & Editor ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Sicherheit: niemals hochladen! ───────────────────────────────────
+*.key
+*.pem
+*.p12
+secrets.json
+.secrets
