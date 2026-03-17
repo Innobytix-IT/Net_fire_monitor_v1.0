@@ -1,0 +1,56 @@
+[Unit]
+Description=Net-Fire-Monitor v3.0 – Netzwerküberwachung & Firewall
+After=network-online.target
+Wants=network-online.target
+After=NetworkManager-wait-online.service systemd-networkd-wait-online.service
+
+# ── SICHERHEITS-ARCHITEKTUR (Gemini-Audit Fix 3) ─────────────────────────
+# Zwei Prozesse mit minimalen Rechten:
+#
+#   1. netfiremon-monitor.service  → läuft als root (nötig für Scapy + iptables)
+#      Verwendet AmbientCapabilities statt vollem root-Kontext wo möglich.
+#
+#   2. netfiremon-web.service      → läuft als "netfiremon" (unprivilegiert)
+#      Liest nur State-Datei, schreibt Config. Kein Netzwerkzugriff nötig.
+#
+# Diese Datei ist der Monitor-Prozess (Schritt 1).
+# Für den Web-Prozess siehe netfiremon-web.service.
+# ─────────────────────────────────────────────────────────────────────────
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/netfiremon
+
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do ip link show up | grep -v "lo:" | grep -q "UP" && exit 0; sleep 1; done; exit 1'
+ExecStart=/opt/netfiremon/.venv/bin/python netfiremon_terminal.py --auto
+ExecStopPost=/bin/sh -c '/opt/netfiremon/.venv/bin/python -c \
+  "import sys; sys.path.insert(0,\"/opt/netfiremon\"); \
+   from core import FirewallEngine; fe=FirewallEngine(); fe.cleanup_all()" \
+  2>/dev/null || true'
+
+Restart=on-failure
+RestartSec=15
+StartLimitInterval=120
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+
+# ── Capabilities ──────────────────────────────────────────────────────────
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+NoNewPrivileges=true
+
+# ── Isolation ─────────────────────────────────────────────────────────────
+PrivateTmp=true
+ProtectHome=read-only
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/netfiremon
+ReadOnlyPaths=/etc
+LimitNOFILE=65536
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
+
