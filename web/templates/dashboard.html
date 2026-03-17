@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- DASHBOARD -->
+<div id="page-dashboard" class="page active">
+  <div id="snap-banner"></div>
+  <div id="geo-missing-banner" style="display:none;background:rgba(255,140,0,.08);border:1px solid var(--border);border-left:3px solid var(--orange);padding:6px 14px;font-size:11px;color:var(--text2);margin-bottom:12px;border-radius:2px;">
+    ⚠️ <strong style="color:var(--orange)">Geo-IP nicht verfügbar:</strong>
+    GeoLite2-City.mmdb fehlt im Programmordner –
+    <a href="https://www.maxmind.com/en/geolite2/signup" target="_blank" style="color:var(--blue)">Kostenlos herunterladen</a>
+    und neben die .py-Datei legen. Länderdaten werden dann automatisch angezeigt.
+  </div>
+  <div class="g4" style="margin-bottom:12px;">
+    <div class="stat"><div class="stat-lbl">Aktuell</div><div class="stat-val g" id="s-pps">– pps</div><div class="stat-sub" id="s-bps">–</div></div>
+    <div class="stat"><div class="stat-lbl">Baseline</div><div class="stat-val" id="s-baseline">– pps</div><div class="stat-sub" id="s-thresh">Schwellenwert: –</div></div>
+    <div class="stat"><div class="stat-lbl">Alarme gesamt</div><div class="stat-val r" id="s-alerts">–</div><div class="stat-sub" id="s-blocked">Geblockte IPs: –</div></div>
+    <div class="stat"><div class="stat-lbl">Threat Intel</div><div class="stat-val y" id="s-ti">–</div><div class="stat-sub">bekannte Bedrohungen</div></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><span>📈 Verlauf (letzte 60 Messungen)</span><span style="font-size:10px;color:var(--text3)">— Baseline</span></div>
+    <div style="padding:8px 14px;"><canvas id="graph-canvas"></canvas></div>
+  </div>
+  <div class="g3" style="margin-bottom:12px;">
+    <div class="panel" style="grid-column:span 2;">
+      <div class="ph">🔝 Top-Talker</div>
+      <div class="pb0"><table class="tbl"><thead><tr><th>IP-Adresse</th><th>Hostname</th><th>Land</th><th>Typ</th><th>Pakete</th></tr></thead><tbody id="top-talkers"></tbody></table></div>
+    </div>
+    <div class="panel"><div class="ph">🔌 Protokolle</div><div class="pb" id="proto-bars"></div></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px;">
+    <div class="panel">
+      <div class="ph">🔒 Top-Ports</div>
+      <div class="pb0"><table class="tbl"><thead><tr><th>Port</th><th>Dienst</th><th>Pakete</th></tr></thead><tbody id="top-ports"></tbody></table></div>
+    </div>
+    <div class="panel"><div class="ph">🚨 Letzte Alarme</div><div class="pb"><div id="dash-alerts" style="font-size:11px;color:var(--red);line-height:2;"></div></div></div>
+  </div>
+  <div class="panel">
+    <div class="ph">📦 Letzte Pakete <span style="font-size:10px;color:var(--text2);margin-left:8px;">🌍 Geo-IP aktiv</span></div>
+    <div class="pb0"><table class="tbl"><thead><tr><th>Zeit</th><th>Land</th><th>Src-IP</th><th></th><th>Dst-IP</th><th>Proto</th><th>Port</th><th>Größe</th></tr></thead><tbody id="recent-pkts"></tbody></table></div>
+  </div>
+</div>
+
+<!-- ALARME -->
+<div id="page-alarms" class="page">
+  <div class="filter-row">
+    <span style="color:var(--text2);font-size:11px;">Filter:</span>
+    <button class="btn btn-d alarm-filter-btn active" onclick="NFM.filterAlarms('all',this)">Alle</button>
+    <button class="btn btn-r alarm-filter-btn" onclick="NFM.filterAlarms('PPS',this)">Traffic</button>
+    <button class="btn btn-y alarm-filter-btn" onclick="NFM.filterAlarms('Port',this)">Port-Scan</button>
+    <button class="btn btn-b alarm-filter-btn" onclick="NFM.filterAlarms('Threat',this)">Threat-Intel</button>
+    <button class="btn btn-d alarm-filter-btn" onclick="NFM.filterAlarms('Regel',this)">Regeln</button>
+    <div class="spacer"></div>
+    <button class="btn btn-d" onclick="NFM.loadAlarms()">🔄 Aktualisieren</button>
+  </div>
+  <div id="alarm-list"></div>
+</div>
+
+<!-- WHITELIST / BLACKLIST -->
+<div id="page-lists" class="page">
+  <div class="g2">
+    <div class="panel">
+      <div class="ph"><span>✅ Whitelist</span><span style="font-size:11px;color:var(--text2)" id="wl-count"></span></div>
+      <div class="pb">
+        <div class="frow" style="margin-bottom:12px;">
+          <input class="inp inp-w" id="wl-new" placeholder="IP z.B. 160.79.104.10" onkeydown="if(event.key==='Enter')NFM.addToList('whitelist')">
+          <button class="btn btn-g" onclick="NFM.addToList('whitelist')">+ Hinzufügen</button>
+        </div>
+        <div class="ip-list" id="wl-items"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span>🚫 Blacklist</span><span style="font-size:11px;color:var(--text2)" id="bl-count"></span></div>
+      <div class="pb">
+        <div class="frow" style="margin-bottom:12px;">
+          <input class="inp inp-w" id="bl-new" placeholder="IP z.B. 1.2.3.4" onkeydown="if(event.key==='Enter')NFM.addToList('blacklist')">
+          <button class="btn btn-r" onclick="NFM.addToList('blacklist')">+ Hinzufügen</button>
+        </div>
+        <div class="ip-list" id="bl-items"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stumm-Schaltung -->
+  <div class="panel" style="margin-top:4px;">
+    <div class="ph">
+      <span>🔇 Stumm geschaltete IPs</span>
+      <span style="font-size:11px;color:var(--text2)" id="mute-count"></span>
+    </div>
+    <div class="pb">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.7;">
+        Stumm geschaltete IPs lösen weiterhin Pakete aus, erzeugen aber <strong style="color:var(--text2)">keine Alarme</strong> mehr.
+        Nach Ablauf des Intervalls wird <strong style="color:var(--cyan)">genau 1 Alarm</strong> gefeuert — dann beginnt das Intervall neu.
+        So bleibst du informiert ohne Alarm-Flooding. Der automatische Cooldown beträgt <span id="mute-cooldown-display" style="color:var(--cyan)">5 Min.</span> pro IP+Grund.
+      </div>
+
+      <!-- Neue IP manuell stumm schalten -->
+      <div class="frow" style="margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <input class="inp" style="width:180px;" id="mute-new-ip" placeholder="IP z.B. 1.2.3.4"
+               onkeydown="if(event.key==='Enter')NFM.addMuteFromInput()">
+        <select class="inp" id="mute-new-duration">
+          <option value="900">15 Minuten</option>
+          <option value="3600" selected>1 Stunde</option>
+          <option value="21600">6 Stunden</option>
+          <option value="86400">24 Stunden</option>
+          <option value="-1">Dauerhaft</option>
+        </select>
+        <button class="btn btn-y" onclick="NFM.addMuteFromInput()">🔇 Stumm schalten</button>
+        <div class="spacer"></div>
+        <button class="btn btn-d" onclick="NFM.loadMuteList()">🔄 Aktualisieren</button>
+      </div>
+
+      <!-- Cooldown konfigurieren -->
+      <div class="frow" style="margin-bottom:16px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:2px;">
+        <span style="font-size:11px;color:var(--text2);min-width:220px;">⏱ Auto-Cooldown (Sekunden)</span>
+        <input class="inp" type="number" id="mute-cooldown-secs" min="30" max="86400" style="width:90px;" value="300">
+        <button class="btn btn-b" onclick="NFM.saveCooldown()" style="margin-left:8px;">Speichern</button>
+        <span style="font-size:11px;color:var(--text3);margin-left:10px;">Gleiche IP+Grund wird automatisch für diese Zeit nicht erneut gemeldet</span>
+      </div>
+
+      <!-- Aktive Stummschaltungen -->
+      <div id="mute-items">
+        <div style="color:var(--text3);font-size:11px;padding:8px;">Lade …</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FIREWALL-REGELN -->
+<div id="page-rules" class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <span style="color:var(--text2);font-size:12px;">Aktive Regeln</span>
+    <button class="btn btn-b btn-lg" onclick="NFM.showAddRule()">+ Neue Regel</button>
+  </div>
+  <div id="rules-list"></div>
+</div>
+
+<!-- LOGS -->
+<div id="page-logs" class="page">
+  <div class="filter-row" style="flex-wrap:wrap;gap:6px;">
+    <button class="btn btn-b active" id="log-btn-m"
+      onclick="NFM.loadLog('monitor');
+               this.classList.add('active');
+               document.getElementById('log-btn-f').classList.remove('active')">
+      📋 Monitor-Log
+    </button>
+    <button class="btn btn-d" id="log-btn-f"
+      onclick="NFM.loadLog('firewall');
+               this.classList.add('active');
+               document.getElementById('log-btn-m').classList.remove('active')">
+      🔥 Firewall-Log
+    </button>
+    <div class="spacer"></div>
+    <input id="log-search" class="inp" placeholder="🔍 Suchen …"
+           style="width:200px;font-size:11px;"
+           oninput="NFM._renderLog()">
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);">
+      <input type="checkbox" id="log-autoscroll" checked> Auto-Scroll
+    </label>
+    <button class="btn btn-d" onclick="NFM.loadLog()">🔄 Aktualisieren</button>
+  </div>
+  <div class="log-box" id="log-content" style="font-family:var(--mono);font-size:11px;line-height:1.9;max-height:calc(100vh - 180px);">
+    <div style="color:var(--text3)">Klicke auf Monitor-Log oder Firewall-Log …</div>
+  </div>
+</div>
+
+<!-- KONFIGURATION -->
+<div id="page-config" class="page">
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">🔥 Firewall &amp; Überwachung <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">Firewall-Modus</span><select class="inp" id="cfg-firewall_mode"><option value="monitor">👁 monitor – Nur beobachten</option><option value="confirm">⚡ confirm – E-Mail + manuell</option><option value="auto">🔥 auto – Automatisch blockieren</option></select></div>
+      <div class="frow"><span class="flbl">Schwellenwert (%)</span><input class="inp" id="cfg-threshold" type="number" min="5" max="500" style="width:80px;"><span style="font-size:11px;color:var(--text2)">% über Baseline → Alarm</span></div>
+      <div class="frow"><span class="flbl">Messintervall (s)</span><input class="inp" id="cfg-monitor_interval" type="number" style="width:80px;"></div>
+      <div class="frow"><span class="flbl">Baseline-Dauer (s)</span><input class="inp" id="cfg-average_period" type="number" style="width:80px;"></div>
+      <div class="frow"><span class="flbl">Netzwerk-Interface</span><input class="inp" id="cfg-interface" placeholder="leer = alle" style="width:160px;"></div>
+      <div class="frow"><span class="flbl">BPF-Filter</span><input class="inp inp-w" id="cfg-bpf_filter"></div>
+    </div>
+  </div>
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">🔔 Benachrichtigungen <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">Desktop-Benachrichtigung</span><div class="tog" id="cfg-notify_desktop" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Log-Einträge</span><div class="tog" id="cfg-notify_log" onclick="NFM.toggleBool(this)"></div></div>
+    </div>
+  </div>
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">📧 E-Mail <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">E-Mail aktiviert</span><div class="tog" id="cfg-email_enabled" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">SMTP-Server</span><input class="inp inp-w" id="cfg-email_smtp"></div>
+      <div class="frow"><span class="flbl">SMTP-Port</span><input class="inp" id="cfg-email_port" type="number" style="width:80px;"></div>
+      <div class="frow"><span class="flbl">Absender</span><input class="inp inp-w" id="cfg-email_user" type="email"></div>
+      <div class="frow"><span class="flbl">Empfänger</span><input class="inp inp-w" id="cfg-email_recipient" type="email"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">⚠️ Passwort über ENV-Variable NFM_EMAIL_PASSWORD</div>
+    </div>
+  </div>
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">☠️ Threat Intelligence <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">Feeds aktiviert</span><div class="tog" id="cfg-threat_intel_enabled" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Auto-Block bekannte IPs</span><div class="tog" id="cfg-threat_intel_auto_block" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Update-Intervall (s)</span><input class="inp" id="cfg-threat_intel_update_interval" type="number" style="width:90px;"></div>
+    </div>
+  </div>
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">🔍 Analyse-Features <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">DNS-Auflösung</span><div class="tog" id="cfg-resolve_dns" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Geo-IP-Lookup</span><div class="tog" id="cfg-geo_lookup" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Port-Scan-Erkennung</span><div class="tog" id="cfg-detect_portscan" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Portscan-Limit</span><input class="inp" id="cfg-portscan_limit" type="number" style="width:80px;"><span style="font-size:11px;color:var(--text2)">Ports in 10s</span></div>
+    </div>
+  </div>
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">📁 Reports &amp; Logs <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">CSV-Export</span><div class="tog" id="cfg-export_csv" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">JSON-Export</span><div class="tog" id="cfg-export_json" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">Report-Rotation (Tage)</span><input class="inp" id="cfg-report_rotate" type="number" min="1" max="365" style="width:80px;"></div>
+    </div>
+  </div>
+
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">🌐 PRO: Netzwerk-Interfaces <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Mehrere Interfaces kommagetrennt (z.B. eth0,eth1) oder leer = alle.</div>
+      <div class="frow"><span class="flbl">Interfaces (Multi)</span><input class="inp inp-w" id="cfg-interfaces-raw" placeholder="eth0,eth1 oder leer = alle"><span style="font-size:11px;color:var(--text3)">kommagetrennt</span></div>
+      <div class="frow"><span class="flbl">BPF-Filter</span><input class="inp inp-w" id="cfg-bpf_filter_pro" placeholder="z.B. tcp[tcpflags] & (tcp-syn) != 0 or icmp or udp"></div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;">Home: <span style="color:var(--cyan)">ip or ip6</span> &nbsp;|&nbsp; Pro/Server: <span style="color:var(--cyan)">tcp[tcpflags] &amp; (tcp-syn) != 0 or icmp or udp</span></div>
+    </div>
+  </div>
+
+  <div class="cfg-sec">
+    <div class="cfg-sec-title" onclick="NFM.toggleSection(this)">📡 PRO: SIEM / Syslog-Export <span>▼</span></div>
+    <div class="cfg-sec-body">
+      <div class="frow"><span class="flbl">Syslog aktiviert</span><div class="tog" id="cfg-syslog_enabled" onclick="NFM.toggleBool(this)"></div></div>
+      <div class="frow"><span class="flbl">SIEM-Server Host</span><input class="inp inp-w" id="cfg-syslog_host" placeholder="z.B. 192.168.1.100"></div>
+      <div class="frow"><span class="flbl">Syslog-Port</span><input class="inp" id="cfg-syslog_port" type="number" style="width:90px;"></div>
+      <div class="frow"><span class="flbl">Protokoll</span>
+        <select class="inp" id="cfg-syslog_protocol">
+          <option value="udp">UDP – fire-and-forget</option>
+          <option value="tcp">TCP – zuverlässig</option>
+        </select>
+      </div>
+      <div class="frow"><span class="flbl">Syslog-Tag</span><input class="inp" id="cfg-syslog_tag" style="width:220px;"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">✅ Kompatibel mit: Splunk · Graylog · Elastic Stack · QRadar · Wazuh</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:16px;">
+    <button class="btn btn-g btn-lg" onclick="NFM.saveConfig()">💾 Konfiguration speichern</button>
+    <button class="btn btn-d btn-lg" onclick="NFM.loadConfigUI()">↺ Zurücksetzen</button>
+  </div>
+</div>
+
+{% endblock %}
+{% block modals %}
+<div id="modal-rule" style="display:none;" class="modal-ov" onclick="if(event.target===this)NFM.closeModal('rule')">
+  <div class="modal-box">
+    <div class="modal-title">📋 Firewall-Regel hinzufügen</div>
+    <div class="frow"><span class="flbl">Protokoll</span><select class="inp" id="rule-proto"><option value="any">any – Alle</option><option value="tcp">TCP</option><option value="udp">UDP</option><option value="icmp">ICMP</option></select></div>
+    <div class="frow"><span class="flbl">Port</span><input class="inp" id="rule-port" type="number" placeholder="0 = alle" style="width:100px;"></div>
+    <div class="frow"><span class="flbl">Quell-IP</span><input class="inp inp-w" id="rule-src" placeholder="leer = alle IPs"></div>
+    <div class="frow"><span class="flbl">Aktion</span><select class="inp" id="rule-action"><option value="block">🚫 block</option><option value="alert">⚠️ alert</option><option value="allow">✅ allow</option></select></div>
+    <div class="frow"><span class="flbl">Kommentar</span><input class="inp inp-w" id="rule-comment" placeholder="z.B. Telnet immer blockieren"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-g btn-lg" onclick="NFM.saveRule()">💾 Speichern</button>
+      <button class="btn btn-d btn-lg" onclick="NFM.closeModal('rule')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

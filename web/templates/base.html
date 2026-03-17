@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Net-Fire-Monitor v3.9</title>
+<!-- CSRF-Token im Meta-Tag – JavaScript liest diesen für alle POST-Requests -->
+<meta name="csrf-token" content="{{ csrf_token }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='dashboard.js') }}" defer></script>
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+<script>
+// Globale CSRF-Helper-Funktion – wird von app.js verwendet
+window.NFM_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+// Wrapper: hängt CSRF-Token automatisch an alle fetch-POST-Requests
+window.nfmFetch = function(url, options) {
+  options = options || {};
+  options.headers = options.headers || {};
+  if (!options.method || options.method.toUpperCase() === 'GET') {
+    return fetch(url, options);
+  }
+  // Bei schreibenden Requests: CSRF-Token im Header
+  options.headers['X-CSRF-Token'] = window.NFM_CSRF;
+  return fetch(url, options);
+};
+
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  var page = document.getElementById('page-' + name);
+  if (page) page.classList.add('active');
+  if (btn) btn.classList.add('active');
+  function tryLoad() {
+    if (!window.NFM || !window.NFM.loadAlarms) { setTimeout(tryLoad, 50); return; }
+    var loaders = {
+      alarms: function(){ NFM.loadAlarms(); },
+      lists:  function(){ NFM.loadLists(); },
+      rules:  function(){ NFM.loadRules(); },
+      logs:   function(){ NFM.loadLog('monitor'); },
+      config: function(){ NFM.loadConfigUI(); }
+    };
+    if (loaders[name]) loaders[name]();
+  }
+  tryLoad();
+}
+</script>
+</head>
+<body>
+
+<div id="hdr">
+  <div class="logo">NET-FIRE-<span>MONITOR</span> <small style="font-size:12px;color:var(--text2);font-family:var(--mono)">v3.9</small></div>
+  <div class="meta">
+    <span id="hdr-interface">Interface: –</span>
+    <span id="hdr-badge" class="badge b-neutral">–</span>
+    <span id="hdr-ti">TI: –</span>
+    <span id="hdr-clock">––:––:––</span>
+    {% if network_mode %}
+    <a href="/logout" style="color:var(--text2);font-size:11px;text-decoration:none;">🔒 Abmelden</a>
+    {% endif %}
+  </div>
+</div>
+
+<div id="nav">
+  <button class="nav-btn active" onclick="showPage('dashboard',this)">📊 Dashboard</button>
+  <button class="nav-btn"        onclick="showPage('alarms',this)">🚨 Alarme</button>
+  <button class="nav-btn"        onclick="showPage('lists',this)">🛡️ Whitelist / Blacklist</button>
+  <button class="nav-btn"        onclick="showPage('rules',this)">📋 Firewall-Regeln</button>
+  <button class="nav-btn"        onclick="showPage('logs',this)">📄 Logs</button>
+  <button class="nav-btn"        onclick="showPage('config',this)">⚙️ Konfiguration</button>
+</div>
+
+<div id="main">
+  {% block content %}{% endblock %}
+</div>
+
+<div id="toasts"></div>
+{% block modals %}{% endblock %}
+
+</body>
+</html>
